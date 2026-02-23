@@ -1,0 +1,1384 @@
+# =============================================================================
+# Smart Bin/Trash Reminder Blueprint
+# =============================================================================
+# A comprehensive bin night reminder system with optional AI camera
+# verification, escalating notifications, and visual light alerts.
+#
+# Requires the helper entities package to be installed first.
+# See README.md for full installation instructions.
+# =============================================================================
+
+blueprint:
+  name: "Smart Bin/Trash Reminder"
+  description: >
+    A comprehensive bin night reminder system with optional AI camera
+    verification, escalating notifications, and light flash alerts.
+
+
+    Checks your bin schedule sensors each evening. If tomorrow is collection
+    day, it sends reminders to put the bins out, optionally verifies via AI
+    camera vision, and reminds you to bring bins back the next afternoon.
+
+
+    **Features:**
+
+    - Automatic bin night detection from any schedule sensor
+
+    - Supports up to 3 bin types (waste, recycling, organics, etc.)
+
+    - Escalating notification urgency
+
+    - Optional AI camera verification (any AI provider)
+
+    - Optional light flashing as visual alert
+
+    - Morning reset and afternoon bring-back reminders
+
+    - Actionable notification with confirmation button
+
+    - Multi-device notifications (up to 3 devices)
+
+    - Fully customizable timing, messages, and behavior
+
+
+    **Requires:** Helper entities package installed in /config/packages/.
+    See the README for setup instructions.
+  domain: automation
+  author: "vlat0101"
+  homeassistant:
+    min_version: "2025.8.0"
+  source_url: "https://github.com/vlat0101/ha-smart-bin-reminder/blob/main/blueprints/automation/smart_bin_reminder.yaml"
+
+  input:
+    # =========================================================================
+    # SECTION 1: Bin Schedule Sensors
+    # =========================================================================
+    bin_schedule_section:
+      name: "Bin Schedule"
+      icon: mdi:calendar-clock
+      description: >
+        Select the sensors that track your bin collection schedule.
+        The blueprint checks multiple common formats: date strings,
+        "tomorrow" text, and days_until/days attributes.
+      input:
+        bin_1_schedule_sensor:
+          name: "Bin 1 Schedule Sensor"
+          description: >
+            Sensor showing the next collection date for your first bin type.
+            Required - at least one bin sensor must be configured.
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+
+        bin_1_name:
+          name: "Bin 1 Display Name"
+          description: "Human-readable name shown in notifications (e.g., 'RED (rubbish)', 'General Waste')"
+          default: "Bin 1"
+          selector:
+            text:
+
+        bin_2_schedule_sensor:
+          name: "Bin 2 Schedule Sensor (optional)"
+          description: "Sensor for a second bin type (e.g., recycling). Leave default if you only have one bin."
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+
+        bin_2_name:
+          name: "Bin 2 Display Name"
+          default: "Bin 2"
+          selector:
+            text:
+
+        bin_3_schedule_sensor:
+          name: "Bin 3 Schedule Sensor (optional)"
+          description: "Sensor for a third bin type (e.g., organics/green waste). Leave default if not needed."
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+
+        bin_3_name:
+          name: "Bin 3 Display Name"
+          default: "Bin 3"
+          selector:
+            text:
+
+    # =========================================================================
+    # SECTION 2: Notifications
+    # =========================================================================
+    notifications_section:
+      name: "Notifications"
+      icon: mdi:bell
+      description: >
+        Configure which devices receive notifications. You can notify up to
+        3 devices (e.g., the person responsible + a parent/partner).
+      input:
+        notify_service_1:
+          name: "Primary Notification Service"
+          description: >
+            The notify service for the main device (e.g., notify.mobile_app_my_phone).
+            Find yours in Developer Tools > Services > Notify.
+          selector:
+            text:
+
+        notify_service_2:
+          name: "Second Notification Service (optional)"
+          description: "A second device to also receive notifications. Leave empty if not needed."
+          default: ""
+          selector:
+            text:
+
+        notify_service_3:
+          name: "Third Notification Service (optional)"
+          description: "A third device to also receive notifications. Leave empty if not needed."
+          default: ""
+          selector:
+            text:
+
+        enable_persistent_notifications:
+          name: "Enable Persistent HA Notifications"
+          description: "Also create persistent notifications in the Home Assistant UI sidebar."
+          default: true
+          selector:
+            boolean:
+
+    # =========================================================================
+    # SECTION 3: Schedule & Timing
+    # =========================================================================
+    timing_section:
+      name: "Schedule & Timing"
+      icon: mdi:clock-outline
+      description: "Customize when reminders start, how often they repeat, and when they stop."
+      collapsed: true
+      input:
+        evening_trigger_time:
+          name: "Evening Reminder Start"
+          description: "Time to check if tomorrow is collection day and send the first reminder."
+          default: "18:00:00"
+          selector:
+            time:
+
+        nag_start_time:
+          name: "Nag Loop Start Time"
+          description: "Time to begin periodic checks and escalating reminders."
+          default: "20:00:00"
+          selector:
+            time:
+
+        nag_end_time:
+          name: "Nag Loop End Time"
+          description: "Time to stop nagging for the night."
+          default: "23:59:00"
+          selector:
+            time:
+
+        nag_interval_minutes:
+          name: "Minutes Between Nag Checks"
+          description: "How often to check and send reminders during the nag window."
+          default: 15
+          selector:
+            number:
+              min: 5
+              max: 60
+              step: 5
+              unit_of_measurement: "minutes"
+
+        max_nags:
+          name: "Maximum Nag Notifications"
+          description: "Safety cap to prevent infinite nagging."
+          default: 20
+          selector:
+            number:
+              min: 3
+              max: 50
+
+        morning_reset_time:
+          name: "Morning Reset Time"
+          description: "Time to reset monitoring and activate the bring-back reminder."
+          default: "07:00:00"
+          selector:
+            time:
+
+        return_check_start_time:
+          name: "Afternoon Return Check Start"
+          description: "Time to start checking if bins have been brought back."
+          default: "16:00:00"
+          selector:
+            time:
+
+        return_check_end_time:
+          name: "Afternoon Return Check End"
+          description: "Time to stop checking for bin returns."
+          default: "20:30:00"
+          selector:
+            time:
+
+        return_check_interval_minutes:
+          name: "Minutes Between Return Checks"
+          description: "How often to check for bin returns in the afternoon."
+          default: 30
+          selector:
+            number:
+              min: 10
+              max: 120
+              step: 10
+              unit_of_measurement: "minutes"
+
+    # =========================================================================
+    # SECTION 4: AI Camera Verification (Optional)
+    # =========================================================================
+    ai_vision_section:
+      name: "AI Camera Verification (Optional)"
+      icon: mdi:eye
+      description: >
+        Use an AI vision model to verify bins via camera. Works with any AI
+        provider that supports the AI Task integration (OpenAI, Google, etc.).
+        When disabled, the system works as a simple time-based reminder.
+      collapsed: true
+      input:
+        enable_ai_vision:
+          name: "Enable AI Vision Checks"
+          description: "Turn on AI-powered camera verification of bin status."
+          default: false
+          selector:
+            boolean:
+
+        camera_entity:
+          name: "Camera Entity"
+          description: "Camera that can see the bin storage area."
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: camera
+
+        floodlight_entity:
+          name: "Floodlight Entity (optional)"
+          description: "Light to turn on before taking a snapshot for better night visibility. Leave default if not needed."
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: light
+
+        floodlight_warmup_seconds:
+          name: "Floodlight Warmup Seconds"
+          description: "Seconds to wait after turning on the light before taking a snapshot."
+          default: 5
+          selector:
+            number:
+              min: 1
+              max: 30
+
+        ai_task_entity:
+          name: "AI Task Entity (optional)"
+          description: "Specific AI Task entity to use. Leave default to use system default."
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: ai_task
+
+        ai_prompt_bins_out:
+          name: "AI Prompt - Check Bins Taken Out"
+          description: >
+            Prompt sent to AI to check if bins have been taken out.
+            IMPORTANT: Customize this to describe YOUR camera view and bin appearance.
+          default: >
+            Analyze this security camera image to check whether wheelie bins
+            (trash/rubbish bins) are in their normal storage position.
+
+            If a bin is NOT visible in its usual spot, it means it has been
+            moved to the street for collection (which is the desired outcome).
+
+            Look carefully for the bins. Report whether each bin is visible
+            (still needs to go out) or missing from its usual spot (has been
+            taken out for collection).
+          selector:
+            text:
+              multiline: true
+
+        ai_prompt_bins_returned:
+          name: "AI Prompt - Check Bins Returned"
+          description: "Prompt for checking if bins have been brought back from the street."
+          default: >
+            Analyze this security camera image to check whether wheelie bins
+            are visible in their normal storage position, indicating they have
+            been brought back from the street after collection.
+
+            If bins are visible in their usual spot, they have been returned.
+            If they are missing, they are still out on the street.
+          selector:
+            text:
+              multiline: true
+
+    # =========================================================================
+    # SECTION 5: Light Flash Alerts (Optional)
+    # =========================================================================
+    light_flash_section:
+      name: "Light Flash Alerts (Optional)"
+      icon: mdi:lightbulb-alert
+      description: "Flash a light as a visual nag when bins are not out."
+      collapsed: true
+      input:
+        enable_light_flash:
+          name: "Enable Light Flashing"
+          description: "Flash a light during nag reminders for extra visibility."
+          default: false
+          selector:
+            boolean:
+
+        flash_light_entity:
+          name: "Light to Flash"
+          description: "A color-capable light entity. Will flash in the chosen color."
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: light
+
+        flash_color:
+          name: "Flash Color"
+          description: "Color to use when flashing the light."
+          default: [255, 0, 0]
+          selector:
+            color_rgb:
+
+        flash_count:
+          name: "Number of Flashes"
+          description: "How many times to flash the light per nag cycle."
+          default: 5
+          selector:
+            number:
+              min: 1
+              max: 20
+
+    # =========================================================================
+    # SECTION 6: Custom Messages (Optional)
+    # =========================================================================
+    messages_section:
+      name: "Custom Messages"
+      icon: mdi:message-text
+      description: >
+        Customize notification text. Use {{ bins }} for the bin names
+        and {{ count }} for the reminder number.
+      collapsed: true
+      input:
+        message_first_reminder:
+          name: "First Reminder"
+          description: "Sent when bin night is first detected."
+          default: "Tonight is bin night! Please put the {{ bins }} out on the curb."
+          selector:
+            text:
+              multiline: true
+
+        message_gentle_nag:
+          name: "Gentle Nag (reminders 1-2)"
+          default: "REMINDER: The {{ bins }} still need to go out! Please do it now."
+          selector:
+            text:
+              multiline: true
+
+        message_urgent_nag:
+          name: "Urgent Nag (reminders 3-5)"
+          default: "BINS NOT OUT! Go put the {{ bins }} out RIGHT NOW! This is reminder #{{ count }}."
+          selector:
+            text:
+              multiline: true
+
+        message_final_warning:
+          name: "Final Warning (6+ reminders)"
+          default: "FINAL WARNING #{{ count }}: The {{ bins }} are STILL NOT OUT. The truck comes in the morning! GO. NOW."
+          selector:
+            text:
+              multiline: true
+
+        message_bins_confirmed:
+          name: "Bins Confirmed Out"
+          default: "The bins have been confirmed out on the curb. Great work!"
+          selector:
+            text:
+              multiline: true
+
+        message_bring_back:
+          name: "Bring Bins Back Reminder"
+          default: "The bins are still out on the street! Please bring them back to their normal spot."
+          selector:
+            text:
+              multiline: true
+
+# =============================================================================
+# AUTOMATION CONFIGURATION
+# =============================================================================
+
+mode: queued
+max: 5
+
+# Make input values available in triggers (needed for time_pattern templates)
+trigger_variables:
+  nag_interval: !input nag_interval_minutes
+  return_interval: !input return_check_interval_minutes
+
+triggers:
+  # Evening: check if tomorrow is collection day
+  - trigger: time
+    at: !input evening_trigger_time
+    id: "evening_trigger"
+
+  # Nag loop: periodic check during the evening
+  - trigger: time_pattern
+    minutes: "/{{ nag_interval }}"
+    id: "nag_check"
+
+  # Manual confirm: user taps "Bins are out!" on notification
+  - trigger: event
+    event_type: mobile_app_notification_action
+    event_data:
+      action: "SBR_BINS_DONE"
+    id: "manual_confirm"
+
+  # Morning reset
+  - trigger: time
+    at: !input morning_reset_time
+    id: "morning_reset"
+
+  # Afternoon return check
+  - trigger: time_pattern
+    minutes: "/{{ return_interval }}"
+    id: "return_check"
+
+# Expose all inputs as variables for use in templates
+variables:
+  bin_1_sensor: !input bin_1_schedule_sensor
+  bin_1_label: !input bin_1_name
+  bin_2_sensor: !input bin_2_schedule_sensor
+  bin_2_label: !input bin_2_name
+  bin_3_sensor: !input bin_3_schedule_sensor
+  bin_3_label: !input bin_3_name
+  enable_ai: !input enable_ai_vision
+  camera: !input camera_entity
+  floodlight: !input floodlight_entity
+  floodlight_warmup: !input floodlight_warmup_seconds
+  ai_entity: !input ai_task_entity
+  ai_prompt_out: !input ai_prompt_bins_out
+  ai_prompt_return: !input ai_prompt_bins_returned
+  enable_flash: !input enable_light_flash
+  flash_light: !input flash_light_entity
+  flash_color_rgb: !input flash_color
+  flash_times: !input flash_count
+  notify_1: !input notify_service_1
+  notify_2: !input notify_service_2
+  notify_3: !input notify_service_3
+  nag_start: !input nag_start_time
+  nag_end: !input nag_end_time
+  return_start: !input return_check_start_time
+  return_end: !input return_check_end_time
+  max_nag_count: !input max_nags
+  persistent_notif: !input enable_persistent_notifications
+  msg_first: !input message_first_reminder
+  msg_gentle: !input message_gentle_nag
+  msg_urgent: !input message_urgent_nag
+  msg_final: !input message_final_warning
+  msg_confirmed: !input message_bins_confirmed
+  msg_return: !input message_bring_back
+
+actions:
+  - choose:
+      # =================================================================
+      # BRANCH 1: EVENING TRIGGER - Check if tomorrow is collection day
+      # =================================================================
+      - conditions:
+          - condition: trigger
+            id: "evening_trigger"
+        sequence:
+          - variables:
+              tomorrow: "{{ (now() + timedelta(days=1)).strftime('%Y-%m-%d') }}"
+              bin_1_due: >
+                {{ bin_1_sensor not in [none, '', [], 'unknown'] and (
+                  states(bin_1_sensor) == tomorrow
+                  or states(bin_1_sensor) | lower == 'tomorrow'
+                  or state_attr(bin_1_sensor, 'days') | int(99) == 1
+                  or state_attr(bin_1_sensor, 'days_until') | int(99) == 1
+                  or state_attr(bin_1_sensor, 'days_until_collection') | int(99) == 1
+                ) }}
+              bin_2_due: >
+                {{ bin_2_sensor not in [none, '', [], 'unknown'] and (
+                  states(bin_2_sensor) == tomorrow
+                  or states(bin_2_sensor) | lower == 'tomorrow'
+                  or state_attr(bin_2_sensor, 'days') | int(99) == 1
+                  or state_attr(bin_2_sensor, 'days_until') | int(99) == 1
+                  or state_attr(bin_2_sensor, 'days_until_collection') | int(99) == 1
+                ) }}
+              bin_3_due: >
+                {{ bin_3_sensor not in [none, '', [], 'unknown'] and (
+                  states(bin_3_sensor) == tomorrow
+                  or states(bin_3_sensor) | lower == 'tomorrow'
+                  or state_attr(bin_3_sensor, 'days') | int(99) == 1
+                  or state_attr(bin_3_sensor, 'days_until') | int(99) == 1
+                  or state_attr(bin_3_sensor, 'days_until_collection') | int(99) == 1
+                ) }}
+              bins_needed_list: >
+                {% set bins = [] %}
+                {% if bin_1_due %}{% set bins = bins + [bin_1_label] %}{% endif %}
+                {% if bin_2_due %}{% set bins = bins + [bin_2_label] %}{% endif %}
+                {% if bin_3_due %}{% set bins = bins + [bin_3_label] %}{% endif %}
+                {{ bins | join(', ') }}
+
+          # Only proceed if at least one bin needs to go out
+          - condition: template
+            value_template: "{{ bins_needed_list | length > 0 }}"
+
+          # Initialize all monitoring helpers
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.sbr_bins_required_tonight
+            data:
+              value: "{{ bins_needed_list }}"
+
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.sbr_bins_confirmed_out
+
+          - action: input_number.set_value
+            target:
+              entity_id: input_number.sbr_bin_nag_count
+            data:
+              value: 0
+
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.sbr_bins_detected_out
+            data:
+              value: ""
+
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.sbr_bins_need_returning
+
+          # Activate bin night monitoring mode
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.sbr_bin_night_active
+
+          # Send the first friendly reminder
+          - variables:
+              nag_num: 0
+              bins: "{{ bins_needed_list }}"
+              count: 1
+              message: "{{ msg_first | replace('{{ bins }}', bins) | replace('{{ count }}', '1') }}"
+
+          # Notify all configured devices
+          - action: "{{ notify_1 }}"
+            data:
+              title: "Bin Night Reminder"
+              message: "{{ message }}"
+              data:
+                tag: "sbr_bin_reminder"
+                importance: high
+                channel: bin_reminder
+                sticky: true
+                actions:
+                  - action: "SBR_BINS_DONE"
+                    title: "Bins are out!"
+
+          - if:
+              - condition: template
+                value_template: "{{ notify_2 | length > 0 }}"
+            then:
+              - action: "{{ notify_2 }}"
+                data:
+                  title: "Bin Night Reminder"
+                  message: "{{ message }}"
+                  data:
+                    tag: "sbr_bin_reminder"
+                    actions:
+                      - action: "SBR_BINS_DONE"
+                        title: "Bins are out!"
+
+          - if:
+              - condition: template
+                value_template: "{{ notify_3 | length > 0 }}"
+            then:
+              - action: "{{ notify_3 }}"
+                data:
+                  title: "Bin Night Reminder"
+                  message: "{{ message }}"
+                  data:
+                    tag: "sbr_bin_reminder"
+                    actions:
+                      - action: "SBR_BINS_DONE"
+                        title: "Bins are out!"
+
+          - if:
+              - condition: template
+                value_template: "{{ persistent_notif }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  title: "Bin Night - Action Required"
+                  message: "{{ message }}"
+                  notification_id: "sbr_bin_night_reminder"
+
+          # Set nag count to 1 (first reminder sent)
+          - action: input_number.set_value
+            target:
+              entity_id: input_number.sbr_bin_nag_count
+            data:
+              value: 1
+
+      # =================================================================
+      # BRANCH 2: NAG CHECK - Periodic check during the evening
+      # =================================================================
+      - conditions:
+          - condition: trigger
+            id: "nag_check"
+          - condition: state
+            entity_id: input_boolean.sbr_bin_night_active
+            state: "on"
+          - condition: state
+            entity_id: input_boolean.sbr_bins_confirmed_out
+            state: "off"
+          - condition: template
+            value_template: >
+              {% set start_h = nag_start.split(':')[0] | int %}
+              {% set start_m = nag_start.split(':')[1] | int %}
+              {% set end_h = nag_end.split(':')[0] | int %}
+              {% set end_m = nag_end.split(':')[1] | int %}
+              {% set now_mins = now().hour * 60 + now().minute %}
+              {{ now_mins >= start_h * 60 + start_m and now_mins <= end_h * 60 + end_m }}
+          - condition: numeric_state
+            entity_id: input_number.sbr_bin_nag_count
+            below: !input max_nags
+        sequence:
+          # --- AI VISION CHECK (if enabled) ---
+          - if:
+              - condition: template
+                value_template: "{{ enable_ai and camera not in [none, '', [], 'unknown'] }}"
+            then:
+              # Turn on floodlight if configured
+              - if:
+                  - condition: template
+                    value_template: "{{ floodlight not in [none, '', [], 'unknown'] }}"
+                then:
+                  - action: light.turn_on
+                    target:
+                      entity_id: "{{ floodlight }}"
+                  - delay:
+                      seconds: "{{ floodlight_warmup | int }}"
+
+              # Take camera snapshot
+              - action: camera.snapshot
+                target:
+                  entity_id: "{{ camera }}"
+                data:
+                  filename: "/config/www/sbr_bin_snapshot.jpg"
+
+              - delay:
+                  seconds: 2
+
+              # Turn off floodlight
+              - if:
+                  - condition: template
+                    value_template: "{{ floodlight not in [none, '', [], 'unknown'] }}"
+                then:
+                  - action: light.turn_off
+                    target:
+                      entity_id: "{{ floodlight }}"
+
+              # Send to AI for analysis
+              - action: ai_task.generate_data
+                data:
+                  task_name: "smart_bin_reminder_check"
+                  instructions: "{{ ai_prompt_out }}"
+                  structure:
+                    bin_1_visible:
+                      description: "Is the first bin visible in its normal storage position? true = still there, false = taken out"
+                      selector:
+                        boolean:
+                    bin_2_visible:
+                      description: "Is the second bin visible in its normal storage position? true = still there, false = taken out"
+                      selector:
+                        boolean:
+                    bin_3_visible:
+                      description: "Is the third bin visible in its normal storage position? true = still there, false = taken out"
+                      selector:
+                        boolean:
+                    confidence:
+                      description: "Detection confidence"
+                      selector:
+                        select:
+                          options:
+                            - "high"
+                            - "medium"
+                            - "low"
+                    notes:
+                      description: "Brief description of what was observed"
+                      selector:
+                        text:
+                  attachments:
+                    - media_content_id: "media-source://camera/{{ camera }}"
+                      media_content_type: "image/jpeg"
+                  entity_id: "{{ ai_entity if ai_entity not in [none, '', [], 'unknown'] else none }}"
+                response_variable: ai_result
+
+              # Store debug info
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.sbr_bins_detected_out
+                data:
+                  value: "{{ (ai_result.data | default({}) | string)[:250] }}"
+
+              # Evaluate results - bin NOT visible = has been taken out
+              - variables:
+                  bins_required: "{{ states('input_text.sbr_bins_required_tonight') }}"
+                  result_data: "{{ ai_result.data | default({}) }}"
+                  bin_1_out: "{{ not (result_data.bin_1_visible | default(true)) }}"
+                  bin_2_out: "{{ not (result_data.bin_2_visible | default(true)) }}"
+                  bin_3_out: "{{ not (result_data.bin_3_visible | default(true)) }}"
+                  all_required_out: >
+                    {% set required = bins_required.split(', ') %}
+                    {% set ok = namespace(val=true) %}
+                    {% for b in required %}
+                      {% if b.strip() == bin_1_label and not bin_1_out %}{% set ok.val = false %}{% endif %}
+                      {% if b.strip() == bin_2_label and not bin_2_out %}{% set ok.val = false %}{% endif %}
+                      {% if b.strip() == bin_3_label and not bin_3_out %}{% set ok.val = false %}{% endif %}
+                    {% endfor %}
+                    {{ ok.val }}
+
+              # If all required bins are out, confirm
+              - if:
+                  - condition: template
+                    value_template: "{{ all_required_out }}"
+                then:
+                  - action: input_boolean.turn_on
+                    target:
+                      entity_id: input_boolean.sbr_bins_confirmed_out
+
+          # --- CHECK RESULT AND ACT ---
+          - choose:
+              # === BINS CONFIRMED OUT - Celebrate! ===
+              - conditions:
+                  - condition: state
+                    entity_id: input_boolean.sbr_bins_confirmed_out
+                    state: "on"
+                sequence:
+                  - variables:
+                      message: "{{ msg_confirmed }}"
+
+                  - action: "{{ notify_1 }}"
+                    data:
+                      title: "Bins Confirmed Out!"
+                      message: "{{ message }}"
+                      data:
+                        tag: "sbr_bin_reminder"
+
+                  - if:
+                      - condition: template
+                        value_template: "{{ notify_2 | length > 0 }}"
+                    then:
+                      - action: "{{ notify_2 }}"
+                        data:
+                          title: "Bins Confirmed Out!"
+                          message: "{{ message }}"
+                          data:
+                            tag: "sbr_bin_reminder"
+
+                  - if:
+                      - condition: template
+                        value_template: "{{ notify_3 | length > 0 }}"
+                    then:
+                      - action: "{{ notify_3 }}"
+                        data:
+                          title: "Bins Confirmed Out!"
+                          message: "{{ message }}"
+                          data:
+                            tag: "sbr_bin_reminder"
+
+                  - action: persistent_notification.dismiss
+                    data:
+                      notification_id: "sbr_bin_night_reminder"
+
+            # === BINS NOT OUT - Nag! ===
+            default:
+              - variables:
+                  nag_num: "{{ states('input_number.sbr_bin_nag_count') | int }}"
+                  bins: "{{ states('input_text.sbr_bins_required_tonight') }}"
+                  count: "{{ nag_num + 1 }}"
+                  message: >
+                    {% if nag_num <= 2 %}
+                      {{ msg_gentle | replace('{{ bins }}', bins) | replace('{{ count }}', count | string) }}
+                    {% elif nag_num <= 5 %}
+                      {{ msg_urgent | replace('{{ bins }}', bins) | replace('{{ count }}', count | string) }}
+                    {% else %}
+                      {{ msg_final | replace('{{ bins }}', bins) | replace('{{ count }}', count | string) }}
+                    {% endif %}
+
+              # Send nag to all configured devices
+              - action: "{{ notify_1 }}"
+                data:
+                  title: "BIN NIGHT REMINDER"
+                  message: "{{ message }}"
+                  data:
+                    tag: "sbr_bin_reminder"
+                    importance: high
+                    channel: bin_reminder
+                    sticky: true
+                    persistent: true
+                    actions:
+                      - action: "SBR_BINS_DONE"
+                        title: "Bins are out!"
+
+              - if:
+                  - condition: template
+                    value_template: "{{ notify_2 | length > 0 }}"
+                then:
+                  - action: "{{ notify_2 }}"
+                    data:
+                      title: "BIN NIGHT REMINDER"
+                      message: "{{ message }}"
+                      data:
+                        tag: "sbr_bin_reminder"
+                        importance: high
+                        actions:
+                          - action: "SBR_BINS_DONE"
+                            title: "Bins are out!"
+
+              - if:
+                  - condition: template
+                    value_template: "{{ notify_3 | length > 0 }}"
+                then:
+                  - action: "{{ notify_3 }}"
+                    data:
+                      title: "BIN NIGHT REMINDER"
+                      message: "{{ message }}"
+                      data:
+                        tag: "sbr_bin_reminder"
+                        importance: high
+                        actions:
+                          - action: "SBR_BINS_DONE"
+                            title: "Bins are out!"
+
+              - if:
+                  - condition: template
+                    value_template: "{{ persistent_notif }}"
+                then:
+                  - action: persistent_notification.create
+                    data:
+                      title: "BIN NIGHT - Action Required"
+                      message: "{{ message }}"
+                      notification_id: "sbr_bin_night_reminder"
+
+              # Increment nag counter
+              - action: input_number.set_value
+                target:
+                  entity_id: input_number.sbr_bin_nag_count
+                data:
+                  value: "{{ nag_num + 1 }}"
+
+              # --- LIGHT FLASH (if enabled) ---
+              - if:
+                  - condition: template
+                    value_template: "{{ enable_flash and flash_light not in [none, '', [], 'unknown'] }}"
+                then:
+                  - action: scene.create
+                    data:
+                      scene_id: sbr_light_before_flash
+                      snapshot_entities:
+                        - "{{ flash_light }}"
+                  - repeat:
+                      count: "{{ flash_times | int }}"
+                      sequence:
+                        - action: light.turn_on
+                          target:
+                            entity_id: "{{ flash_light }}"
+                          data:
+                            rgb_color: "{{ flash_color_rgb }}"
+                            brightness_pct: 100
+                        - delay:
+                            milliseconds: 500
+                        - action: light.turn_off
+                          target:
+                            entity_id: "{{ flash_light }}"
+                        - delay:
+                            milliseconds: 500
+                  - action: scene.turn_on
+                    target:
+                      entity_id: scene.sbr_light_before_flash
+
+      # =================================================================
+      # BRANCH 3: MANUAL CONFIRM - User tapped "Bins are out!" button
+      # =================================================================
+      - conditions:
+          - condition: trigger
+            id: "manual_confirm"
+          - condition: state
+            entity_id: input_boolean.sbr_bin_night_active
+            state: "on"
+          - condition: state
+            entity_id: input_boolean.sbr_bins_confirmed_out
+            state: "off"
+        sequence:
+          # Send acknowledgment
+          - action: "{{ notify_1 }}"
+            data:
+              title: "Checking..."
+              message: >
+                {% if enable_ai and camera not in [none, '', [], 'unknown'] %}
+                  Running AI camera check to verify the bins are out...
+                {% else %}
+                  Marking bins as confirmed out!
+                {% endif %}
+              data:
+                tag: "sbr_bin_reminder"
+
+          # If AI is enabled, run a verification check
+          - if:
+              - condition: template
+                value_template: "{{ enable_ai and camera not in [none, '', [], 'unknown'] }}"
+            then:
+              # Turn on floodlight if configured
+              - if:
+                  - condition: template
+                    value_template: "{{ floodlight not in [none, '', [], 'unknown'] }}"
+                then:
+                  - action: light.turn_on
+                    target:
+                      entity_id: "{{ floodlight }}"
+                  - delay:
+                      seconds: "{{ floodlight_warmup | int }}"
+
+              # Take snapshot
+              - action: camera.snapshot
+                target:
+                  entity_id: "{{ camera }}"
+                data:
+                  filename: "/config/www/sbr_bin_snapshot.jpg"
+
+              - delay:
+                  seconds: 2
+
+              # Turn off floodlight
+              - if:
+                  - condition: template
+                    value_template: "{{ floodlight not in [none, '', [], 'unknown'] }}"
+                then:
+                  - action: light.turn_off
+                    target:
+                      entity_id: "{{ floodlight }}"
+
+              # AI analysis
+              - action: ai_task.generate_data
+                data:
+                  task_name: "smart_bin_reminder_manual_check"
+                  instructions: "{{ ai_prompt_out }}"
+                  structure:
+                    bin_1_visible:
+                      description: "Is the first bin visible in its normal storage position?"
+                      selector:
+                        boolean:
+                    bin_2_visible:
+                      description: "Is the second bin visible?"
+                      selector:
+                        boolean:
+                    bin_3_visible:
+                      description: "Is the third bin visible?"
+                      selector:
+                        boolean:
+                    confidence:
+                      description: "Detection confidence"
+                      selector:
+                        select:
+                          options:
+                            - "high"
+                            - "medium"
+                            - "low"
+                    notes:
+                      description: "Brief observations"
+                      selector:
+                        text:
+                  attachments:
+                    - media_content_id: "media-source://camera/{{ camera }}"
+                      media_content_type: "image/jpeg"
+                  entity_id: "{{ ai_entity if ai_entity not in [none, '', [], 'unknown'] else none }}"
+                response_variable: ai_result
+
+              # Store debug info
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.sbr_bins_detected_out
+                data:
+                  value: "MANUAL: {{ (ai_result.data | default({}) | string)[:240] }}"
+
+              # Evaluate
+              - variables:
+                  bins_required: "{{ states('input_text.sbr_bins_required_tonight') }}"
+                  result_data: "{{ ai_result.data | default({}) }}"
+                  bin_1_out: "{{ not (result_data.bin_1_visible | default(true)) }}"
+                  bin_2_out: "{{ not (result_data.bin_2_visible | default(true)) }}"
+                  bin_3_out: "{{ not (result_data.bin_3_visible | default(true)) }}"
+                  all_required_out: >
+                    {% set required = bins_required.split(', ') %}
+                    {% set ok = namespace(val=true) %}
+                    {% for b in required %}
+                      {% if b.strip() == bin_1_label and not bin_1_out %}{% set ok.val = false %}{% endif %}
+                      {% if b.strip() == bin_2_label and not bin_2_out %}{% set ok.val = false %}{% endif %}
+                      {% if b.strip() == bin_3_label and not bin_3_out %}{% set ok.val = false %}{% endif %}
+                    {% endfor %}
+                    {{ ok.val }}
+
+              - if:
+                  - condition: template
+                    value_template: "{{ all_required_out }}"
+                then:
+                  - action: input_boolean.turn_on
+                    target:
+                      entity_id: input_boolean.sbr_bins_confirmed_out
+            else:
+              # No AI - just trust the user and confirm
+              - action: input_boolean.turn_on
+                target:
+                  entity_id: input_boolean.sbr_bins_confirmed_out
+
+          # Delay for AI to complete if applicable
+          - delay:
+              seconds: 2
+
+          # Report result
+          - choose:
+              - conditions:
+                  - condition: state
+                    entity_id: input_boolean.sbr_bins_confirmed_out
+                    state: "on"
+                sequence:
+                  - action: "{{ notify_1 }}"
+                    data:
+                      title: "Confirmed!"
+                      message: "{{ msg_confirmed }}"
+                      data:
+                        tag: "sbr_bin_reminder"
+
+                  - if:
+                      - condition: template
+                        value_template: "{{ notify_2 | length > 0 }}"
+                    then:
+                      - action: "{{ notify_2 }}"
+                        data:
+                          title: "Confirmed!"
+                          message: "{{ msg_confirmed }}"
+                          data:
+                            tag: "sbr_bin_reminder"
+
+                  - if:
+                      - condition: template
+                        value_template: "{{ notify_3 | length > 0 }}"
+                    then:
+                      - action: "{{ notify_3 }}"
+                        data:
+                          title: "Confirmed!"
+                          message: "{{ msg_confirmed }}"
+                          data:
+                            tag: "sbr_bin_reminder"
+
+                  - action: persistent_notification.dismiss
+                    data:
+                      notification_id: "sbr_bin_night_reminder"
+
+            default:
+              - action: "{{ notify_1 }}"
+                data:
+                  title: "Can't verify yet..."
+                  message: >
+                    The camera check couldn't confirm the bins are out. Make sure
+                    they're fully moved away from their normal spot. I'll check
+                    again soon.
+                  data:
+                    tag: "sbr_bin_reminder"
+
+      # =================================================================
+      # BRANCH 4: MORNING RESET
+      # =================================================================
+      - conditions:
+          - condition: trigger
+            id: "morning_reset"
+          - condition: state
+            entity_id: input_boolean.sbr_bin_night_active
+            state: "on"
+        sequence:
+          # Morning summary notification
+          - variables:
+              morning_message: >
+                {% if is_state('input_boolean.sbr_bins_confirmed_out', 'on') %}
+                  Bins were confirmed out last night - nice work! Don't forget to
+                  bring them back this afternoon after collection.
+                {% else %}
+                  Bin night monitoring has ended. The bins were never confirmed as
+                  out - hopefully they made it! Remember to bring them back later.
+                {% endif %}
+
+          - action: "{{ notify_1 }}"
+            data:
+              title: "Bin Night Over"
+              message: "{{ morning_message }}"
+              data:
+                tag: "sbr_bin_reminder"
+
+          - if:
+              - condition: template
+                value_template: "{{ notify_2 | length > 0 }}"
+            then:
+              - action: "{{ notify_2 }}"
+                data:
+                  title: "Bin Night Over"
+                  message: "{{ morning_message }}"
+                  data:
+                    tag: "sbr_bin_reminder"
+
+          - if:
+              - condition: template
+                value_template: "{{ notify_3 | length > 0 }}"
+            then:
+              - action: "{{ notify_3 }}"
+                data:
+                  title: "Bin Night Over"
+                  message: "{{ morning_message }}"
+                  data:
+                    tag: "sbr_bin_reminder"
+
+          # Reset monitoring, activate return flag
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.sbr_bin_night_active
+
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.sbr_bins_need_returning
+
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.sbr_bins_confirmed_out
+
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.sbr_bins_required_tonight
+            data:
+              value: ""
+
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.sbr_bins_detected_out
+            data:
+              value: ""
+
+          - action: input_number.set_value
+            target:
+              entity_id: input_number.sbr_bin_nag_count
+            data:
+              value: 0
+
+          - action: persistent_notification.dismiss
+            data:
+              notification_id: "sbr_bin_night_reminder"
+
+      # =================================================================
+      # BRANCH 5: RETURN CHECK - Afternoon bin return reminder
+      # =================================================================
+      - conditions:
+          - condition: trigger
+            id: "return_check"
+          - condition: state
+            entity_id: input_boolean.sbr_bins_need_returning
+            state: "on"
+          - condition: template
+            value_template: >
+              {% set start_h = return_start.split(':')[0] | int %}
+              {% set start_m = return_start.split(':')[1] | int %}
+              {% set end_h = return_end.split(':')[0] | int %}
+              {% set end_m = return_end.split(':')[1] | int %}
+              {% set now_mins = now().hour * 60 + now().minute %}
+              {{ now_mins >= start_h * 60 + start_m and now_mins <= end_h * 60 + end_m }}
+        sequence:
+          # --- AI RETURN CHECK (if enabled) ---
+          - if:
+              - condition: template
+                value_template: "{{ enable_ai and camera not in [none, '', [], 'unknown'] }}"
+            then:
+              # Turn on floodlight if configured
+              - if:
+                  - condition: template
+                    value_template: "{{ floodlight not in [none, '', [], 'unknown'] }}"
+                then:
+                  - action: light.turn_on
+                    target:
+                      entity_id: "{{ floodlight }}"
+                  - delay:
+                      seconds: "{{ floodlight_warmup | int }}"
+
+              # Take snapshot
+              - action: camera.snapshot
+                target:
+                  entity_id: "{{ camera }}"
+                data:
+                  filename: "/config/www/sbr_bin_snapshot.jpg"
+
+              - delay:
+                  seconds: 2
+
+              # Turn off floodlight
+              - if:
+                  - condition: template
+                    value_template: "{{ floodlight not in [none, '', [], 'unknown'] }}"
+                then:
+                  - action: light.turn_off
+                    target:
+                      entity_id: "{{ floodlight }}"
+
+              # AI analysis for return check
+              - action: ai_task.generate_data
+                data:
+                  task_name: "smart_bin_reminder_return_check"
+                  instructions: "{{ ai_prompt_return }}"
+                  structure:
+                    bin_1_visible:
+                      description: "Is the first bin visible in its normal storage position (returned)?"
+                      selector:
+                        boolean:
+                    bin_2_visible:
+                      description: "Is the second bin visible (returned)?"
+                      selector:
+                        boolean:
+                    bin_3_visible:
+                      description: "Is the third bin visible (returned)?"
+                      selector:
+                        boolean:
+                    confidence:
+                      description: "Detection confidence"
+                      selector:
+                        select:
+                          options:
+                            - "high"
+                            - "medium"
+                            - "low"
+                    notes:
+                      description: "Brief observations"
+                      selector:
+                        text:
+                  attachments:
+                    - media_content_id: "media-source://camera/{{ camera }}"
+                      media_content_type: "image/jpeg"
+                  entity_id: "{{ ai_entity if ai_entity not in [none, '', [], 'unknown'] else none }}"
+                response_variable: ai_result
+
+              # Store debug info
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.sbr_bins_detected_out
+                data:
+                  value: "RETURN: {{ (ai_result.data | default({}) | string)[:242] }}"
+
+              # For return check: bins visible = returned
+              - variables:
+                  result_data: "{{ ai_result.data | default({}) }}"
+                  all_returned: >
+                    {{ result_data.bin_1_visible | default(false)
+                      and (bin_2_sensor in [none, '', [], 'unknown'] or result_data.bin_2_visible | default(false))
+                      and (bin_3_sensor in [none, '', [], 'unknown'] or result_data.bin_3_visible | default(false)) }}
+
+              - if:
+                  - condition: template
+                    value_template: "{{ all_returned }}"
+                then:
+                  - action: input_boolean.turn_off
+                    target:
+                      entity_id: input_boolean.sbr_bins_need_returning
+
+          # --- CHECK RESULT AND ACT ---
+          - choose:
+              # === BINS ARE BACK ===
+              - conditions:
+                  - condition: state
+                    entity_id: input_boolean.sbr_bins_need_returning
+                    state: "off"
+                sequence:
+                  - action: "{{ notify_1 }}"
+                    data:
+                      title: "Bins Are Back!"
+                      message: "The bins have been returned to their spot. All done until next bin night!"
+                      data:
+                        tag: "sbr_bin_return_reminder"
+
+                  - if:
+                      - condition: template
+                        value_template: "{{ notify_2 | length > 0 }}"
+                    then:
+                      - action: "{{ notify_2 }}"
+                        data:
+                          title: "Bins Are Back!"
+                          message: "The bins have been returned to their spot. All done until next bin night!"
+                          data:
+                            tag: "sbr_bin_return_reminder"
+
+                  - if:
+                      - condition: template
+                        value_template: "{{ notify_3 | length > 0 }}"
+                    then:
+                      - action: "{{ notify_3 }}"
+                        data:
+                          title: "Bins Are Back!"
+                          message: "The bins have been returned to their spot. All done until next bin night!"
+                          data:
+                            tag: "sbr_bin_return_reminder"
+
+                  - action: persistent_notification.dismiss
+                    data:
+                      notification_id: "sbr_bin_return_reminder"
+
+            # === BINS STILL OUT ===
+            default:
+              - variables:
+                  message: "{{ msg_return }}"
+
+              - action: "{{ notify_1 }}"
+                data:
+                  title: "Bring The Bins Back!"
+                  message: "{{ message }}"
+                  data:
+                    tag: "sbr_bin_return_reminder"
+                    importance: high
+                    sticky: true
+
+              - if:
+                  - condition: template
+                    value_template: "{{ notify_2 | length > 0 }}"
+                then:
+                  - action: "{{ notify_2 }}"
+                    data:
+                      title: "Bring The Bins Back!"
+                      message: "{{ message }}"
+                      data:
+                        tag: "sbr_bin_return_reminder"
+
+              - if:
+                  - condition: template
+                    value_template: "{{ notify_3 | length > 0 }}"
+                then:
+                  - action: "{{ notify_3 }}"
+                    data:
+                      title: "Bring The Bins Back!"
+                      message: "{{ message }}"
+                      data:
+                        tag: "sbr_bin_return_reminder"
+
+              - if:
+                  - condition: template
+                    value_template: "{{ persistent_notif }}"
+                then:
+                  - action: persistent_notification.create
+                    data:
+                      title: "Bins Need Returning"
+                      message: "{{ message }}"
+                      notification_id: "sbr_bin_return_reminder"

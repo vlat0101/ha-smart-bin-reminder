@@ -1,0 +1,27 @@
+# =============================================================================
+# Smart Bin Reminder - Dashboard Monitoring Card
+# =============================================================================
+# Optional: Add this card to your dashboard to monitor the bin reminder system.
+#
+# Option 1: Copy/paste as YAML into a Manual card
+# Option 2: Add as an Entities card via the UI and select the entities below
+# =============================================================================
+
+type: entities
+title: "Bin Reminder Status"
+icon: mdi:delete-clock
+show_header_toggle: false
+entities:
+  - entity: input_boolean.sbr_bin_night_active
+    name: "Bin Night Active"
+  - entity: input_text.sbr_bins_required_tonight
+    name: "Bins Due Tonight"
+  - entity: input_boolean.sbr_bins_confirmed_out
+    name: "Bins Confirmed Out"
+  - entity: input_number.sbr_bin_nag_count
+    name: "Nag Count"
+  - entity: input_boolean.sbr_bins_need_returning
+    name: "Bins Need Returning"
+  - type: divider
+  - entity: input_text.sbr_bins_detected_out
+    name: "Last AI Detection"

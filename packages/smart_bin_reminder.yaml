@@ -1,0 +1,57 @@
+# =============================================================================
+# Smart Bin Reminder - Helper Entities Package
+# =============================================================================
+# Drop this file into your /config/packages/ directory.
+#
+# If you haven't enabled packages yet, add this to configuration.yaml:
+#   homeassistant:
+#     packages: !include_dir_named packages
+#
+# Then restart Home Assistant.
+#
+# All entity IDs use the "sbr_" prefix (Smart Bin Reminder) to avoid
+# collisions with your existing entities.
+# =============================================================================
+
+input_boolean:
+  # Tracks whether the system is currently in "bin night monitoring mode"
+  # Turned ON in the evening on bin night, turned OFF at morning reset
+  sbr_bin_night_active:
+    name: "SBR - Bin Night Active"
+    icon: mdi:delete-clock
+
+  # Tracks whether the AI vision check has confirmed the bins are OUT
+  # (i.e. NOT visible in their normal storage position on camera)
+  sbr_bins_confirmed_out:
+    name: "SBR - Bins Confirmed Out"
+    icon: mdi:check-circle
+
+  # Tracks whether bins need to be brought BACK from the curb after collection
+  # Set ON at morning reset, turned OFF when bins are detected back in position
+  sbr_bins_need_returning:
+    name: "SBR - Bins Need Returning"
+    icon: mdi:arrow-u-left-top
+
+input_text:
+  # Stores which bins need to go out tonight (comma-separated labels)
+  sbr_bins_required_tonight:
+    name: "SBR - Bins Required Tonight"
+    icon: mdi:delete-variant
+    max: 100
+
+  # Stores the raw AI vision response for debugging
+  sbr_bins_detected_out:
+    name: "SBR - AI Detection Result"
+    icon: mdi:eye-check
+    max: 255
+
+input_number:
+  # Counts how many nag notifications have been sent this bin night
+  # Used to escalate message urgency and cap max nags (safety limit)
+  sbr_bin_nag_count:
+    name: "SBR - Nag Count"
+    icon: mdi:counter
+    min: 0
+    max: 50
+    step: 1
+    mode: box
