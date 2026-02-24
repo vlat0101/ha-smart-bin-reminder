@@ -419,10 +419,8 @@ blueprint:
 mode: queued
 max: 5
 
-# Make input values available in triggers (needed for time_pattern templates)
-trigger_variables:
-  nag_interval: !input nag_interval_minutes
-  return_interval: !input return_check_interval_minutes
+# Note: time_pattern triggers don't support templates, so we trigger every
+# minute and filter with a modulo condition in each branch.
 
 triggers:
   # Evening: check if tomorrow is collection day
@@ -430,9 +428,9 @@ triggers:
     at: !input evening_trigger_time
     id: "evening_trigger"
 
-  # Nag loop: periodic check during the evening
+  # Nag loop: fires every minute, filtered by interval condition in branch
   - trigger: time_pattern
-    minutes: "/{{ nag_interval }}"
+    minutes: "/1"
     id: "nag_check"
 
   # Manual confirm: user taps "Bins are out!" on notification
@@ -447,9 +445,9 @@ triggers:
     at: !input morning_reset_time
     id: "morning_reset"
 
-  # Afternoon return check
+  # Return check: fires every minute, filtered by interval condition in branch
   - trigger: time_pattern
-    minutes: "/{{ return_interval }}"
+    minutes: "/1"
     id: "return_check"
 
 # Expose all inputs as variables for use in templates
@@ -474,6 +472,8 @@ variables:
   notify_1: !input notify_service_1
   notify_2: !input notify_service_2
   notify_3: !input notify_service_3
+  nag_interval: !input nag_interval_minutes
+  return_interval: !input return_check_interval_minutes
   nag_start: !input nag_start_time
   nag_end: !input nag_end_time
   return_start: !input return_check_start_time
@@ -654,6 +654,8 @@ actions:
           - condition: numeric_state
             entity_id: input_number.sbr_bin_nag_count
             below: !input max_nags
+          - condition: template
+            value_template: "{{ now().minute % (nag_interval | int) == 0 }}"
         sequence:
           # --- AI VISION CHECK (if enabled) ---
           - if:
@@ -1201,6 +1203,8 @@ actions:
               {% set end_m = return_end.split(':')[1] | int %}
               {% set now_mins = now().hour * 60 + now().minute %}
               {{ now_mins >= start_h * 60 + start_m and now_mins <= end_h * 60 + end_m }}
+          - condition: template
+            value_template: "{{ now().minute % (return_interval | int) == 0 }}"
         sequence:
           # --- AI RETURN CHECK (if enabled) ---
           - if:
